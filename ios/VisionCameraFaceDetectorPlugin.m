@@ -4,7 +4,7 @@
 
 @implementation RegisterPlugins
     + (void) load {
-        [FrameProcessorPluginRegistry addFrameProcessorPlugin:@"detectFace"
+        [FrameProcessorPluginRegistry addFrameProcessorPlugin:@"scanFaces"
                                               withInitializer:^FrameProcessorPlugin*(NSDictionary* options) {
             return [[VisionCameraFaceDetectorPlugin alloc] init];
         }];
