@@ -3,108 +3,133 @@ import MLKitVision
 import MLKitFaceDetection
 import CoreMedia
 import CoreImage
+import CoreML
+import UIKit
+import AVFoundation
 
 
 @objc(VisionCameraFaceDetectorPlugin)
 public class VisionCameraFaceDetectorPlugin: FrameProcessorPlugin {
-    let MAX_DIFFERENCE = 3
-    let faceDetectorOptions = FaceDetectorOptions()
-
+    static var FaceDetectorOption: FaceDetectorOptions = {
+        let option = FaceDetectorOptions()
+        option.contourMode = .all
+        option.classificationMode = .all
+        option.landmarkMode = .all
+        option.performanceMode = .accurate // doesn't work in fast mode!, why?
+        return option
+    }()
     
-    var result: [String: Any] = ["status": "error", "faceDirection": FaceDirection.unknown.rawValue, "error": FaceDetectionError(code: 102, message:"Plugin not found").toDictionary()]
-    var _prevFaceDirection = FaceDirection.unknown
-    var _firstDetectedTime = 0
+    static var faceDetector = FaceDetector.faceDetector(options: FaceDetectorOption)
     
-    private func setErrorResult(errorCode: Int, errorMessage: String) {
-        self.result = ["status": "error", "faceDirection": FaceDirection.unknown.rawValue, "error": FaceDetectionError(code: errorCode, message: errorMessage).toDictionary()]
-    }
-    
-    class func newInstance() -> VisionCameraFaceDetectorPlugin {
-        return VisionCameraFaceDetectorPlugin()
-    }
-    
-    public override init() {
-        super.init()
-        faceDetectorOptions.performanceMode = .accurate
-        faceDetectorOptions.landmarkMode = .all
-    }
-    
-    public override func callback(_ frame: Frame, withArguments arguments: [AnyHashable : Any]?) -> Any {
-     let faceDetector = FaceDetector.faceDetector(options: faceDetectorOptions)
-     let buffer = frame.buffer
-     let visionImage = VisionImage(buffer: buffer)
-     
-     guard let pixelBuffer = CMSampleBufferGetImageBuffer(buffer) else {
-         self.setErrorResult(errorCode: 102, errorMessage: "Cannot get image from frame") // cannot get image from frame
-        return result
-      }
-     let frameWidth = CVPixelBufferGetWidth(pixelBuffer)
-     let frameHeight = CVPixelBufferGetHeight(pixelBuffer)
-     
-     weak var weakSelf = self
-        faceDetector.process(visionImage) { faces, error in
-            guard weakSelf != nil else {
-                self.setErrorResult(errorCode: 101, errorMessage: "System error") // system error
-                return
-            }
+    private static func processContours(from face: Face) -> [String:[[String:CGFloat]]] {
+      let faceContoursTypes = [
+        FaceContourType.face,
+        FaceContourType.leftEyebrowTop,
+        FaceContourType.leftEyebrowBottom,
+        FaceContourType.rightEyebrowTop,
+        FaceContourType.rightEyebrowBottom,
+        FaceContourType.leftEye,
+        FaceContourType.rightEye,
+        FaceContourType.upperLipTop,
+        FaceContourType.upperLipBottom,
+        FaceContourType.lowerLipTop,
+        FaceContourType.lowerLipBottom,
+        FaceContourType.noseBridge,
+        FaceContourType.noseBottom,
+        FaceContourType.leftCheek,
+        FaceContourType.rightCheek,
+      ]
+      
+      let faceContoursTypesStrings = [
+        "FACE",
+        "LEFT_EYEBROW_TOP",
+        "LEFT_EYEBROW_BOTTOM",
+        "RIGHT_EYEBROW_TOP",
+        "RIGHT_EYEBROW_BOTTOM",
+        "LEFT_EYE",
+        "RIGHT_EYE",
+        "UPPER_LIP_TOP",
+        "UPPER_LIP_BOTTOM",
+        "LOWER_LIP_TOP",
+        "LOWER_LIP_BOTTOM",
+        "NOSE_BRIDGE",
+        "NOSE_BOTTOM",
+        "LEFT_CHEEK",
+        "RIGHT_CHEEK",
+      ];
+      
+      var faceContoursTypesMap: [String:[[String:CGFloat]]] = [:]
+      
+      for i in 0..<faceContoursTypes.count {
+        let contour = face.contour(ofType: faceContoursTypes[i]);
+        
+        var pointsArray: [[String:CGFloat]] = []
+        
+        if let points = contour?.points {
+          for point in points {
+            let currentPointsMap = [
+                "x": point.x,
+                "y": point.y,
+            ]
+            
+            pointsArray.append(currentPointsMap)
+          }
           
-            guard let faces = faces, !faces.isEmpty else {
-                self.setErrorResult(errorCode: 104, errorMessage: "Face not found") // faces not found
-              return
-            }
-            
-            guard faces.count == 1 else {
-              self.setErrorResult(errorCode: 105, errorMessage: "Too many faces in frame") // too many faces in frame
-              return
-            }
-            let userFace = faces.first
-            
-            //detect does face is fully visible in frame
-            if(Utils.isFaceOutOfFrame(faceBoundingBox: FaceBoundingBox(rect: userFace!.frame), frameWidth: frameWidth , frameHeight: frameHeight)){
-                self.setErrorResult(errorCode: 106, errorMessage: "Face is out of frame") // face is out of frame
-                return
-            }
-        
-            //Get current face direction
-            let _curFaceDirection = Utils.getFaceDirection(angleX: userFace!.headEulerAngleX, angleY: userFace!.headEulerAngleY)
-            if(self._prevFaceDirection != _curFaceDirection){
-              self._prevFaceDirection = _curFaceDirection
-              self.setErrorResult(errorCode: 107,errorMessage: "Face is transitioning") // face is transitioning
-              return
-            }
-            
-            //standby mode
-            let nowInSec = Int(Int64(Date().timeIntervalSince1970))
-            if(self._firstDetectedTime == 0){
-                self._firstDetectedTime = nowInSec
-                self.result = ["status": "standby", "faceDirection": _curFaceDirection.rawValue]
-                return
-            }
-            let difference = nowInSec - self._firstDetectedTime
-            if (difference < self.MAX_DIFFERENCE) {
-                self.result = ["status": "standby", "faceDirection": _curFaceDirection.rawValue]
-                return
-            }
-            
-            //convert frame to base64 image data
-            guard let imageBuffer = buffer.imageBuffer else {
-              self.setErrorResult(errorCode: 102, errorMessage: "Cannot get image from frame") //cannot get image from frame
-              return
-            }
-            let image = CIImage(cvPixelBuffer: imageBuffer)
-            let context = CIContext()
-            guard let cgImage = context.createCGImage(image, from: image.extent) else {
-              self.setErrorResult(errorCode: 102, errorMessage: "Cannot get image from frame") //cannot get image from frame
-              return
-            }
-            let uiImage = UIImage(cgImage: cgImage)
-            let imageData = uiImage.jpegData(compressionQuality: 100)
-            let frameData = imageData?.base64EncodedString()
-        
-            //set base64 FrameData to result
-            self.result = ["status": "success", "faceDirection": _curFaceDirection.rawValue, "frameData": frameData ?? ""]
+          faceContoursTypesMap[faceContoursTypesStrings[i]] = pointsArray
+        }
       }
-      return result
-  }
+      
+      return faceContoursTypesMap
+    }
+    
+    private static func processBoundingBox(from face: Face) -> [String:Any] {
+        let frameRect = face.frame
+
+        let offsetX = (frameRect.midX - ceil(frameRect.width)) / 2.0
+        let offsetY = (frameRect.midY - ceil(frameRect.height)) / 2.0
+
+        let x = frameRect.maxX + offsetX
+        let y = frameRect.minY + offsetY
+
+        return [
+          "x": frameRect.midX + (frameRect.midX - x),
+          "y": frameRect.midY + (y - frameRect.midY),
+          "width": frameRect.width,
+          "height": frameRect.height,
+          "boundingCenterX": frameRect.midX,
+          "boundingCenterY": frameRect.midY
+        ]
+    }
+    
+    @objc
+    public static func callback(_ frame: Frame!, withArgs _: [Any]!) -> Any! {
+        let image = VisionImage(buffer: frame.buffer)
+        image.orientation = .up
+        
+        var faceAttributes: [Any] = []
+        
+        do {
+            let faces: [Face] =  try faceDetector.results(in: image)
+            if (!faces.isEmpty){
+                for face in faces {
+                    var map: [String: Any] = [:]
+                    
+                    map["rollAngle"] = face.headEulerAngleZ  // Head is tilted sideways rotZ degrees
+                    map["pitchAngle"] = face.headEulerAngleX  // Head is rotated to the uptoward rotX degrees
+                    map["yawAngle"] = face.headEulerAngleY   // Head is rotated to the right rotY degrees
+                    map["leftEyeOpenProbability"] = face.leftEyeOpenProbability
+                    map["rightEyeOpenProbability"] = face.rightEyeOpenProbability
+                    map["smilingProbability"] = face.smilingProbability
+                    map["bounds"] = processBoundingBox(from: face)
+                    map["contours"] = processContours(from: face)
+                    
+                    faceAttributes.append(map)
+                }
+            }
+        } catch _ {
+            return nil
+        }
+        return faceAttributes
+    }
 
 }
