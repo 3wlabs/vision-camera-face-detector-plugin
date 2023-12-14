@@ -11,7 +11,7 @@ Pod::Spec.new do |s|
   s.license      = package["license"]
   s.authors      = package["author"]
 
-  s.platforms    = { :ios => "12.4" }
+  s.platforms    = { :ios => "13" }
   s.source       = { :git => "https://github.com/lenhathieu96/rn-vision-camera-face-detector.git.git"}
 
   s.source_files = "ios/**/*.{h,m,mm,swift}"
