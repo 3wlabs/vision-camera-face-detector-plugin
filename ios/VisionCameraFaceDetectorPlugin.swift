@@ -20,6 +20,10 @@ public class VisionCameraFaceDetectorPlugin: FrameProcessorPlugin {
     }()
     
     static var faceDetector = FaceDetector.faceDetector(options: FaceDetectorOption)
+
+    public override init() {
+        super.init()
+    }
     
     private static func processContours(from face: Face) -> [String:[[String:CGFloat]]] {
       let faceContoursTypes = [
@@ -101,8 +105,7 @@ public class VisionCameraFaceDetectorPlugin: FrameProcessorPlugin {
         ]
     }
     
-    @objc
-    public static func callback(_ frame: Frame!, withArgs _: [Any]!) -> Any! {
+    public override func callback(_ frame: Frame, withArguments arguments: [AnyHashable : Any]?) -> Any {
         let image = VisionImage(buffer: frame.buffer)
         image.orientation = .up
         
