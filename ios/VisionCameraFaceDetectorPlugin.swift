@@ -19,13 +19,13 @@ public class VisionCameraFaceDetectorPlugin: FrameProcessorPlugin {
         return option
     }()
     
-    static var faceDetector = FaceDetector.faceDetector(options: FaceDetectorOption)
+    var faceDetector = FaceDetector.faceDetector(options: FaceDetectorOption)
 
     public override init() {
         super.init()
     }
     
-    private static func processContours(from face: Face) -> [String:[[String:CGFloat]]] {
+    private func processContours(from face: Face) -> [String:[[String:CGFloat]]] {
       let faceContoursTypes = [
         FaceContourType.face,
         FaceContourType.leftEyebrowTop,
@@ -86,7 +86,7 @@ public class VisionCameraFaceDetectorPlugin: FrameProcessorPlugin {
       return faceContoursTypesMap
     }
     
-    private static func processBoundingBox(from face: Face) -> [String:Any] {
+    private func processBoundingBox(from face: Face) -> [String:Any] {
         let frameRect = face.frame
 
         let offsetX = (frameRect.midX - ceil(frameRect.width)) / 2.0
@@ -130,7 +130,7 @@ public class VisionCameraFaceDetectorPlugin: FrameProcessorPlugin {
                 }
             }
         } catch _ {
-            return nil
+            return faceAttributes
         }
         return faceAttributes
     }
