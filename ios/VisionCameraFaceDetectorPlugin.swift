@@ -101,7 +101,9 @@ public class VisionCameraFaceDetectorPlugin: FrameProcessorPlugin {
           "width": frameRect.width,
           "height": frameRect.height,
           "boundingCenterX": frameRect.midX,
-          "boundingCenterY": frameRect.midY
+          "boundingCenterY": frameRect.midY,
+          "offsetX": offsetX,
+          "offsetY": offsetY
         ]
     }
     
